@@ -101,7 +101,8 @@ public:
     std::string pickWithHistory(const std::string& sourceName,
                                 const std::string& outputName,
                                 int historySize,
-                                bool startPlayback) {
+                                bool startPlayback,
+                                bool replacePrevious) {
         std::lock_guard<std::mutex> lk(m_mutex);
 
         // 1. Read source playlist
@@ -147,7 +148,7 @@ public:
         writeHistory(sourceName, history);
 
         // 6. Write output playlist
-        err = writeOutputPlaylist(outputName, item);
+        err = writeOutputPlaylist(outputName, item, replacePrevious);
         if (!err.empty()) return err;
 
         // 7. Optionally start playback
@@ -215,10 +216,37 @@ private:
         for (const auto& e : history) f << e << "\n";
     }
 
-    std::string writeOutputPlaylist(const std::string& name, const Json::Value& item) {
+    std::string writeOutputPlaylist(const std::string& name, const Json::Value& item, bool replacePrevious) {
         std::string path = PLAYLISTS_DIR + name + ".json";
-        double duration = item.isMember("duration") ? item["duration"].asDouble() : 0.0;
+        double itemDuration = item.isMember("duration") ? item["duration"].asDouble() : 0.0;
 
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "  ";
+
+        // Append mode: read existing playlist and add item to the end
+        if (!replacePrevious) {
+            std::ifstream fin(path);
+            if (fin.is_open()) {
+                Json::Value existing;
+                Json::CharReaderBuilder builder;
+                std::string errs;
+                if (Json::parseFromStream(builder, fin, &existing, &errs) &&
+                    existing.isMember("mainPlaylist") && existing["mainPlaylist"].isArray()) {
+                    existing["mainPlaylist"].append(item);
+                    double prev = existing["playlistInfo"].isMember("total_duration")
+                                      ? existing["playlistInfo"]["total_duration"].asDouble() : 0.0;
+                    existing["playlistInfo"]["total_duration"] = prev + itemDuration;
+                    existing["playlistInfo"]["total_items"]    = (int)existing["mainPlaylist"].size();
+                    std::ofstream fout(path, std::ios::trunc);
+                    if (!fout.is_open()) return "Cannot write output playlist: " + path;
+                    fout << Json::writeString(writer, existing);
+                    return {};
+                }
+            }
+            // Fall through: no valid existing playlist — create fresh
+        }
+
+        // Replace mode (or no existing file to append to)
         Json::Value root;
         root["name"]      = name;
         root["version"]   = 3;
@@ -230,11 +258,8 @@ private:
         root["leadIn"]    = Json::Value(Json::arrayValue);
         root["leadOut"]   = Json::Value(Json::arrayValue);
         root["mainPlaylist"].append(item);
-        root["playlistInfo"]["total_duration"] = duration;
+        root["playlistInfo"]["total_duration"] = itemDuration;
         root["playlistInfo"]["total_items"]    = 1;
-
-        Json::StreamWriterBuilder writer;
-        writer["indentation"] = "  ";
 
         std::ofstream f(path, std::ios::trunc);
         if (!f.is_open()) return "Cannot write output playlist: " + path;
@@ -276,6 +301,8 @@ InsertRandomWithHistoryCommand::InsertRandomWithHistoryCommand(RandomSongPickerP
                        .setDefaultValue("10"));
     args.push_back(CommandArg("Start Playback", "bool", "Start the output playlist immediately", true)
                        .setDefaultValue("true"));
+    args.push_back(CommandArg("Replace Previous", "bool", "Remove the previous item before inserting new one", true)
+                       .setDefaultValue("true"));
 }
 
 // ---------------------------------------------------------------------------
@@ -298,7 +325,11 @@ InsertRandomWithHistoryCommand::run(const std::vector<std::string>& a) {
     if (a.size() >= 4)
         startPlayback = !(a[3] == "false" || a[3] == "0");
 
-    std::string result = m_plugin->pickWithHistory(source, output, historySize, startPlayback);
+    bool replacePrevious = true;
+    if (a.size() >= 5)
+        replacePrevious = !(a[4] == "false" || a[4] == "0");
+
+    std::string result = m_plugin->pickWithHistory(source, output, historySize, startPlayback, replacePrevious);
     return std::make_unique<Result>(result);
 }
 

@@ -73,6 +73,19 @@
                 </div>
             </div>
 
+            <div class="form-group row mb-2">
+                <label class="col-sm-3 col-form-label col-form-label-sm"><strong>Replace Previous</strong></label>
+                <div class="col-sm-9 d-flex align-items-center mt-1">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="replacePrevious" checked>
+                        <label class="form-check-label" for="replacePrevious">
+                            Remove the previous item before inserting new one
+                            <small class="text-muted d-block">Unchecked: append after the previous item</small>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
             <div class="form-group row">
                 <div class="col-sm-9 offset-sm-3">
                     <button class="btn btn-warning btn-sm" onclick="doPick()">
@@ -218,16 +231,17 @@ function setStatus(ok, msg) {
 }
 
 function doPick() {
-    var src  = $('#sourceName').val();
-    var out  = getOutputName();
-    var hist = $('#historySize').val() || '10';
-    var play = $('input[name="startPlayback"]:checked').val();
+    var src     = $('#sourceName').val();
+    var out     = getOutputName();
+    var hist    = $('#historySize').val() || '10';
+    var play    = $('input[name="startPlayback"]:checked').val();
+    var replace = $('#replacePrevious').is(':checked') ? 'true' : 'false';
 
     if (!src) { setStatus(false, 'Select a source playlist'); return; }
     if (!out) { setStatus(false, 'Enter a name for the new playlist'); return; }
 
     setStatus(true, 'Picking…');
-    apiCommand('Insert Random Item with History', [src, out, hist, play])
+    apiCommand('Insert Random Item with History', [src, out, hist, play, replace])
         .then(function(r) {
             setStatus(true, r.result || 'Done');
             // Refresh list in case a new playlist was created
