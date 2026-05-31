@@ -19,8 +19,7 @@ echo "fpp-RandomSongPicker: Installing build dependencies..."
 apt-get install -y --no-install-recommends \
     g++ \
     make \
-    libjsoncpp-dev \
-    libcurl4-openssl-dev
+    libjsoncpp-dev
 
 echo "fpp-RandomSongPicker: Building C++ plugin (FPP_SRC=${FPP_SRC})..."
 cd "${PLUGIN_DIR}"

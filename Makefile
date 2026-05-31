@@ -13,7 +13,7 @@ CXXFLAGS += -Wno-unused-parameter -Wno-reorder
 LDFLAGS   = -shared -fPIC
 LDFLAGS  += -Wl,-rpath,'$$ORIGIN/../../../../src'
 LDFLAGS  += -Wl,-rpath,$(FPP_SRC)
-LDLIBS    = -L$(FPP_SRC) -lfpp -ljsoncpp -lcurl
+LDLIBS    = -L$(FPP_SRC) -lfpp -ljsoncpp
 
 SRCS := src/RandomSongPickerPlugin.cpp
 OBJS := $(SRCS:.cpp=.o)

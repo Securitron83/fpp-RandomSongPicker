@@ -7,12 +7,15 @@
  *   Picks a random song from a source playlist, skipping recently played songs.
  *   Writes only the mainPlaylist section of the output playlist — Lead In/Out
  *   sections are preserved if the file already exists.
+ *   When Start Playback is true, calls Player::InsertPlaylistImmediate so FPP
+ *   treats the item as a sequence inside a playlist (correct "now playing" context
+ *   for overlay/scrolling-text effects).
  *   History resets automatically once every song has been played.
  *
  *   Source Playlist  — playlist to pick from
  *   Output Playlist  — playlist to write (default: RandomPick)
  *   History Size     — songs to exclude before repeating (default: 10)
- *   Start Playback   — start the output playlist immediately (default: true)
+ *   Start Playback   — insert and play the output playlist immediately (default: true)
  *   Replace Previous — overwrite mainPlaylist vs. append after previous item (default: true)
  *
  * "Clear Playlist Main"
@@ -32,11 +35,9 @@
 
 // FPP plugin API
 #include <Plugin.h>
+#include <Player.h>
 #include <commands/Commands.h>
 #include <log.h>
-
-// HTTP (for starting playback via local FPP API)
-#include <curl/curl.h>
 
 // Standard library
 #include <algorithm>
@@ -53,30 +54,6 @@
 // ---------------------------------------------------------------------------
 static const std::string PLAYLISTS_DIR = "/home/fpp/media/playlists/";
 static const std::string HISTORY_DIR   = "/home/fpp/media/logs/";
-
-// ---------------------------------------------------------------------------
-// HTTP helper — POST JSON body, discard response
-// ---------------------------------------------------------------------------
-static size_t discardCallback(char*, size_t size, size_t nmemb, void*) {
-    return size * nmemb;
-}
-
-static bool httpPost(const std::string& url, const std::string& body) {
-    CURL* curl = curl_easy_init();
-    if (!curl) return false;
-    struct curl_slist* hdrs = curl_slist_append(nullptr, "Content-Type: application/json");
-    curl_easy_setopt(curl, CURLOPT_URL,           url.c_str());
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT,       5L);
-    curl_easy_setopt(curl, CURLOPT_NOSIGNAL,      1L);
-    curl_easy_setopt(curl, CURLOPT_POST,          1L);
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDS,    body.c_str());
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER,    hdrs);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, discardCallback);
-    CURLcode rc = curl_easy_perform(curl);
-    curl_slist_free_all(hdrs);
-    curl_easy_cleanup(curl);
-    return rc == CURLE_OK;
-}
 
 // ---------------------------------------------------------------------------
 // Forward declarations
@@ -167,14 +144,11 @@ public:
         err = writeOutputPlaylist(outputName, item, replacePrevious);
         if (!err.empty()) return err;
 
-        // 7. Optionally start playback
+        // 7. Optionally insert and play — mirrors FPP's own InsertRandomItemFromPlaylist
         if (startPlayback) {
-            std::string body = "{\"playlist\":\"" + outputName + "\",\"loop\":0}";
-            if (!httpPost("http://127.0.0.1/api/v1/playlist/play", body)) {
-                LogWarn(VB_GENERAL, "RandomSongPicker: failed to start '%s'\n", outputName.c_str());
-                return "Picked '" + pickedId + "' but failed to start playback";
-            }
-            LogInfo(VB_GENERAL, "RandomSongPicker: started '%s'\n", outputName.c_str());
+            Player::INSTANCE.InsertPlaylistImmediate(outputName, 0, 0);
+            LogInfo(VB_GENERAL, "RandomSongPicker: inserted '%s' for immediate playback\n",
+                    outputName.c_str());
         }
 
         return "Picked: " + pickedId;
@@ -352,7 +326,8 @@ private:
 InsertRandomWithHistoryCommand::InsertRandomWithHistoryCommand(RandomSongPickerPlugin* plugin)
     : Command("Insert Random Item with History",
               "Pick a random song from a source playlist, skipping recently played songs. "
-              "Writes the pick to an output playlist and optionally starts it. "
+              "Writes the pick to an output playlist and inserts it for immediate playback "
+              "so FPP treats it as a sequence (correct now-playing context for overlays). "
               "History resets automatically once every song has been played."),
       m_plugin(plugin) {
     args.push_back(CommandArg("Source Playlist", "string", "Playlist to pick from")
