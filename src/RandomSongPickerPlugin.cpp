@@ -7,11 +7,13 @@
  *   Picks a random song from a source playlist, skipping recently played songs.
  *   Writes only the mainPlaylist section of the output playlist — Lead In/Out
  *   sections are preserved if the file already exists.
- *   When Start Playback is true, calls Player::InsertPlaylistAsNext (matching
- *   FPP's own built-in insert commands, immediate=false). The command completes,
- *   FPP plays the single-song output playlist as the next item, then the calling
- *   playlist resumes — Lead Out still runs. FPP sees the item as a sequence entry
- *   so overlay / scrolling-text "now playing" shows the correct song title.
+ *   When Start Playback is true, calls Player::InsertPlaylistAsNext with the source
+ *   playlist at the exact absolute index of the picked item (leadIn count + main index).
+ *   This mirrors FPP's own InsertRandomItemFromPlaylist but with a known position
+ *   instead of the -2 random sentinel, so history is preserved. The command completes,
+ *   FPP plays that one item as the next entry, then the calling playlist resumes —
+ *   Lead Out still runs. FPP sees the item as a sequence entry so overlay /
+ *   scrolling-text "now playing" shows the correct song title.
  *   History resets automatically once every song has been played.
  *
  *   Source Playlist  — playlist to pick from
@@ -102,7 +104,8 @@ public:
 
         // 1. Read source playlist
         Json::Value items;
-        std::string err = readPlaylist(sourceName, items);
+        int leadInCount = 0;
+        std::string err = readPlaylist(sourceName, items, &leadInCount);
         if (!err.empty()) return err;
         if (items.empty())
             return "Source playlist '" + sourceName + "' has no items in mainPlaylist";
@@ -146,13 +149,18 @@ public:
         err = writeOutputPlaylist(outputName, item, replacePrevious);
         if (!err.empty()) return err;
 
-        // 7. Optionally queue as next item — mirrors FPP's own InsertRandomItemFromPlaylist
-        //    (immediate=false). The command finishes cleanly, then FPP plays the inserted
-        //    playlist before advancing, so the calling playlist's Lead Out still runs.
+        // 7. Optionally queue the picked item as the next entry — insert the source playlist
+        //    at the exact absolute index of the picked item (leadIn items + mainPlaylist index).
+        //    This mirrors FPP's built-in InsertRandomItemFromPlaylist but with a known position
+        //    instead of the -2 "pick random" sentinel, so history tracking is preserved.
+        //    The command finishes cleanly; FPP's SwitchToInsertedPlaylist fires on the next
+        //    tick, plays that one item from the source playlist, then the calling playlist
+        //    resumes — Lead Out still runs.
         if (startPlayback) {
-            Player::INSTANCE.InsertPlaylistAsNext(outputName, 0, 0);
-            LogInfo(VB_GENERAL, "RandomSongPicker: queued '%s' as next item\n",
-                    outputName.c_str());
+            int absolutePos = leadInCount + picked;
+            Player::INSTANCE.InsertPlaylistAsNext(sourceName, absolutePos, absolutePos);
+            LogInfo(VB_GENERAL, "RandomSongPicker: queued '%s' (pos %d) from '%s' as next item\n",
+                    pickedId.c_str(), absolutePos, sourceName.c_str());
         }
 
         return "Picked: " + pickedId;
@@ -200,7 +208,7 @@ private:
         return {};
     }
 
-    std::string readPlaylist(const std::string& name, Json::Value& items) {
+    std::string readPlaylist(const std::string& name, Json::Value& items, int* leadInCount = nullptr) {
         std::string path = PLAYLISTS_DIR + name + ".json";
         std::ifstream f(path);
         if (!f.is_open()) return "Cannot open source playlist: " + path;
@@ -212,6 +220,9 @@ private:
         if (!root.isMember("mainPlaylist") || !root["mainPlaylist"].isArray())
             return "'" + path + "' has no mainPlaylist array";
         items = root["mainPlaylist"];
+        if (leadInCount)
+            *leadInCount = (root.isMember("leadIn") && root["leadIn"].isArray())
+                           ? (int)root["leadIn"].size() : 0;
         return {};
     }
 
@@ -330,9 +341,11 @@ private:
 InsertRandomWithHistoryCommand::InsertRandomWithHistoryCommand(RandomSongPickerPlugin* plugin)
     : Command("Insert Random Item with History",
               "Pick a random song from a source playlist, skipping recently played songs. "
-              "Queues the pick as the next item in the calling playlist so FPP plays it as "
-              "a sequence entry — correct now-playing context for overlays and scrolling text. "
-              "After the song the calling playlist resumes normally including Lead Out. "
+              "When Start Playback is true, calls Player::InsertPlaylistAsNext (matching "
+              "FPP's own built-in insert commands, immediate=false). The command completes, "
+              "FPP plays the single-song output playlist as the next item, then the calling "
+              "playlist resumes — Lead Out still runs. FPP sees the item as a sequence entry "
+              "so overlay / scrolling-text \"now playing\" shows the correct song title. "
               "History resets automatically once every song has been played."),
       m_plugin(plugin) {
     args.push_back(CommandArg("Source Playlist", "string", "Playlist to pick from")
@@ -343,7 +356,7 @@ InsertRandomWithHistoryCommand::InsertRandomWithHistoryCommand(RandomSongPickerP
     args.push_back(CommandArg("History Size", "int", "Songs to exclude before repeating", true)
                        .setRange(1, 100)
                        .setDefaultValue("10"));
-    args.push_back(CommandArg("Start Playback", "bool", "Start the output playlist immediately", true)
+    args.push_back(CommandArg("Start Playback", "bool", "Queue the picked item as next item in this playlist", true)
                        .setDefaultValue("true"));
     args.push_back(CommandArg("Replace Previous", "bool", "Remove the previous item before inserting new one", true)
                        .setDefaultValue("true"));
