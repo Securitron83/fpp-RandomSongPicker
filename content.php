@@ -112,7 +112,7 @@
             </div>
         </div>
         <div class="card-body">
-            <p class="mb-2">One FPP command is registered, available under <strong>Sequences &rarr; Command Presets</strong> and in any playlist Command entry:</p>
+            <p class="mb-2">Two FPP commands are registered, available under <strong>Sequences &rarr; Command Presets</strong> and in any playlist Command entry:</p>
             <table class="table table-sm table-bordered" style="max-width:780px">
                 <thead class="thead-light">
                     <tr><th>Command</th><th>Arguments</th></tr>
@@ -121,20 +121,30 @@
                     <tr>
                         <td><code>Insert Random Item with History</code></td>
                         <td>
-                            <strong>Source Playlist</strong> — name without .json (required)<br>
+                            <strong>Source Playlist</strong> — playlist to pick from (required)<br>
                             <strong>Output Playlist</strong> — default: <em>RandomPick</em><br>
                             <strong>History Size</strong> — songs to skip before repeating, default: <em>10</em><br>
-                            <strong>Start Playback</strong> — <em>Yes</em> / <em>No</em>, default: <em>Yes</em>
+                            <strong>Start Playback</strong> — default: <em>true</em><br>
+                            <strong>Replace Previous</strong> — overwrite or append, default: <em>true</em><br>
+                            <small class="text-muted">Lead In and Lead Out sections are always preserved.</small>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><code>Clear Playlist Main</code></td>
+                        <td>
+                            <strong>Playlist</strong> — playlist whose main section to clear (required)<br>
+                            <small class="text-muted">Clears only the main items; Lead In and Lead Out are left intact.</small>
                         </td>
                     </tr>
                 </tbody>
             </table>
             <p class="text-muted small mb-1">
-                <strong>Typical setup:</strong> Create a master playlist (e.g. <em>Christmas</em>) containing
-                all your songs. Add a <em>Command</em> entry at the top of your show Lead-In that fires
-                <code>Playlist - Pick Random Song</code> with Source&nbsp;=&nbsp;<em>Christmas</em>.
-                The plugin writes <em>RandomPick.json</em> and starts it — a different song each time,
-                with no repeats until the full list has been played through.
+                <strong>Typical setup:</strong> Create a scheduler playlist with three entries:
+                (1) a Command that checks WLED status, (2) a Command firing
+                <code>Insert Random Item with History</code> with Source = your song library playlist,
+                (3) a Playlist entry that plays <em>RandomPick</em>.
+                The plugin writes a new random song into <em>RandomPick.json</em> each time, skipping
+                recently played songs, while leaving any Lead In/Out items in <em>RandomPick</em> untouched.
             </p>
             <p class="text-muted small mb-0">
                 History is stored per source playlist in
