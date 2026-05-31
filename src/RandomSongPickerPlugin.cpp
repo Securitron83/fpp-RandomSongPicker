@@ -7,15 +7,17 @@
  *   Picks a random song from a source playlist, skipping recently played songs.
  *   Writes only the mainPlaylist section of the output playlist — Lead In/Out
  *   sections are preserved if the file already exists.
- *   When Start Playback is true, calls Player::InsertPlaylistImmediate so FPP
- *   treats the item as a sequence inside a playlist (correct "now playing" context
- *   for overlay/scrolling-text effects).
+ *   When Start Playback is true, calls Player::InsertPlaylistAsNext (matching
+ *   FPP's own built-in insert commands, immediate=false). The command completes,
+ *   FPP plays the single-song output playlist as the next item, then the calling
+ *   playlist resumes — Lead Out still runs. FPP sees the item as a sequence entry
+ *   so overlay / scrolling-text "now playing" shows the correct song title.
  *   History resets automatically once every song has been played.
  *
  *   Source Playlist  — playlist to pick from
  *   Output Playlist  — playlist to write (default: RandomPick)
  *   History Size     — songs to exclude before repeating (default: 10)
- *   Start Playback   — insert and play the output playlist immediately (default: true)
+ *   Start Playback   — queue the output playlist as next item (default: true)
  *   Replace Previous — overwrite mainPlaylist vs. append after previous item (default: true)
  *
  * "Clear Playlist Main"
@@ -144,10 +146,12 @@ public:
         err = writeOutputPlaylist(outputName, item, replacePrevious);
         if (!err.empty()) return err;
 
-        // 7. Optionally insert and play — mirrors FPP's own InsertRandomItemFromPlaylist
+        // 7. Optionally queue as next item — mirrors FPP's own InsertRandomItemFromPlaylist
+        //    (immediate=false). The command finishes cleanly, then FPP plays the inserted
+        //    playlist before advancing, so the calling playlist's Lead Out still runs.
         if (startPlayback) {
-            Player::INSTANCE.InsertPlaylistImmediate(outputName, 0, 0);
-            LogInfo(VB_GENERAL, "RandomSongPicker: inserted '%s' for immediate playback\n",
+            Player::INSTANCE.InsertPlaylistAsNext(outputName, 0, 0);
+            LogInfo(VB_GENERAL, "RandomSongPicker: queued '%s' as next item\n",
                     outputName.c_str());
         }
 
@@ -326,8 +330,9 @@ private:
 InsertRandomWithHistoryCommand::InsertRandomWithHistoryCommand(RandomSongPickerPlugin* plugin)
     : Command("Insert Random Item with History",
               "Pick a random song from a source playlist, skipping recently played songs. "
-              "Writes the pick to an output playlist and inserts it for immediate playback "
-              "so FPP treats it as a sequence (correct now-playing context for overlays). "
+              "Queues the pick as the next item in the calling playlist so FPP plays it as "
+              "a sequence entry — correct now-playing context for overlays and scrolling text. "
+              "After the song the calling playlist resumes normally including Lead Out. "
               "History resets automatically once every song has been played."),
       m_plugin(plugin) {
     args.push_back(CommandArg("Source Playlist", "string", "Playlist to pick from")
