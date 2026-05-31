@@ -18,9 +18,9 @@ Three FPP commands are registered and available in any playlist Command entry or
 
 | Section | Entry |
 |---|---|
-| Lead In | Command: `WLED - Ensure Power On` |
+| Lead In | *(optional — add any Lead In commands here)* |
 | Main | Command: `Insert Random Item with History` — Source = your song library playlist |
-| Lead Out | Command: `WLED - Turn Off` |
+| Lead Out | *(optional — add any Lead Out commands here)* |
 
 The plugin picks a random, non-recently-played song and FPP plays it inline before running Lead Out. No extra playlist needed.
 
@@ -28,10 +28,10 @@ The plugin picks a random, non-recently-played song and FPP plays it inline befo
 
 | Section | Entry |
 |---|---|
-| Lead In | Command: `WLED - Ensure Power On` |
+| Lead In | *(optional — add any Lead In commands here)* |
 | Main | Command: `Write Random Item to Playlist` — Source = your library, Output = `RandomPick` |
 | Main | Playlist: `RandomPick` |
-| Lead Out | Command: `WLED - Turn Off` |
+| Lead Out | *(optional — add any Lead Out commands here)* |
 
 Useful when the output playlist has its own Lead In/Out items that need to run around the picked song.
 
