@@ -99,14 +99,14 @@
             </div>
         </div>
         <div class="card-body">
-            <p class="mb-2">One FPP command is available under <strong>Sequences &rarr; Command Presets</strong>:</p>
+            <p class="mb-2">One FPP command is registered, available under <strong>Sequences &rarr; Command Presets</strong> and in any playlist Command entry:</p>
             <table class="table table-sm table-bordered" style="max-width:780px">
                 <thead class="thead-light">
                     <tr><th>Command</th><th>Arguments</th></tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td><code>Playlist - Pick Random Song</code></td>
+                        <td><code>Insert Random Item with History</code></td>
                         <td>
                             <strong>Source Playlist</strong> — name without .json (required)<br>
                             <strong>Output Playlist</strong> — default: <em>RandomPick</em><br>
@@ -227,7 +227,7 @@ function doPick() {
     if (!out) { setStatus(false, 'Enter a name for the new playlist'); return; }
 
     setStatus(true, 'Picking…');
-    apiCommand('Playlist - Pick Random Song', [src, out, hist, play])
+    apiCommand('Insert Random Item with History', [src, out, hist, play])
         .then(function(r) {
             setStatus(true, r.result || 'Done');
             // Refresh list in case a new playlist was created

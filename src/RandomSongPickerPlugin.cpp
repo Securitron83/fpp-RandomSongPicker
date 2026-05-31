@@ -1,21 +1,18 @@
 /*
- * fpp-RandomSongPicker — pick a random, non-recently-played song from an
- * FPP playlist and optionally start it immediately.
+ * fpp-RandomSongPicker — "Insert Random Item with History"
  *
- * Command: "Playlist - Pick Random Song"
- *   Source Playlist  — playlist to pick from (name without .json)
- *   Output Playlist  — single-song playlist to write (default: "RandomPick")
- *   History Size     — how many recent songs to exclude (default: 10)
- *   Start Playback   — "Yes" to start the output playlist immediately
+ * Like FPP's built-in random playlist picker, but tracks recently played
+ * songs so nothing repeats until the full source list has been exhausted.
  *
- * Logic:
- *   1. Read mainPlaylist entries from the source playlist JSON file.
- *   2. Load per-source play history (stored in /home/fpp/media/logs/).
- *   3. Pick a random entry not in recent history.
- *      If all entries are in history, reset history and pick freely.
- *   4. Update history (FIFO, capped at History Size).
- *   5. Write a single-entry playlist JSON to the output playlist file.
- *   6. If Start Playback is "Yes", POST to FPP's local API to start it.
+ * Command: "Insert Random Item with History"
+ *   Source Playlist  — playlist to pick from (dropdown via api/playlists/playable)
+ *   Output Playlist  — single-song playlist to write (dropdown, default: RandomPick)
+ *   History Size     — songs to exclude before repeating (default: 10)
+ *   Start Playback   — start the output playlist immediately (default: true)
+ *
+ * History is stored per source playlist at:
+ *   /home/fpp/media/logs/song_picker_<source>_history.txt
+ * Delete that file to reset the play history.
  */
 
 // jsoncpp must come before FPP headers
@@ -35,7 +32,6 @@
 
 // Standard library
 #include <algorithm>
-#include <chrono>
 #include <fstream>
 #include <memory>
 #include <mutex>
@@ -51,7 +47,7 @@ static const std::string PLAYLISTS_DIR = "/home/fpp/media/playlists/";
 static const std::string HISTORY_DIR   = "/home/fpp/media/logs/";
 
 // ---------------------------------------------------------------------------
-// HTTP helper — POST JSON to a URL, discard response body
+// HTTP helper — POST JSON body, discard response
 // ---------------------------------------------------------------------------
 static size_t discardCallback(char*, size_t size, size_t nmemb, void*) {
     return size * nmemb;
@@ -79,9 +75,9 @@ static bool httpPost(const std::string& url, const std::string& body) {
 // ---------------------------------------------------------------------------
 class RandomSongPickerPlugin;
 
-class PickRandomSongCommand : public Command {
+class InsertRandomWithHistoryCommand : public Command {
 public:
-    explicit PickRandomSongCommand(RandomSongPickerPlugin* plugin);
+    explicit InsertRandomWithHistoryCommand(RandomSongPickerPlugin* plugin);
     std::unique_ptr<Result> run(const std::vector<std::string>& a) override;
 private:
     RandomSongPickerPlugin* m_plugin;
@@ -102,22 +98,17 @@ public:
         LogInfo(VB_PLUGIN, "RandomSongPicker: shutdown\n");
     }
 
-    // -----------------------------------------------------------------------
-    // Main logic — called by the command's run()
-    // -----------------------------------------------------------------------
-    std::string pickRandomSong(const std::string& sourceName,
-                               const std::string& outputName,
-                               int historySize,
-                               bool startPlayback) {
+    std::string pickWithHistory(const std::string& sourceName,
+                                const std::string& outputName,
+                                int historySize,
+                                bool startPlayback) {
         std::lock_guard<std::mutex> lk(m_mutex);
 
         // 1. Read source playlist
-        Json::Value sourceItems;
-        std::string readErr = readPlaylist(sourceName, sourceItems);
-        if (!readErr.empty())
-            return readErr;
-
-        if (sourceItems.empty())
+        Json::Value items;
+        std::string err = readPlaylist(sourceName, items);
+        if (!err.empty()) return err;
+        if (items.empty())
             return "Source playlist '" + sourceName + "' has no items in mainPlaylist";
 
         // 2. Load history
@@ -125,24 +116,25 @@ public:
 
         // 3. Build candidate list — items not in recent history
         std::vector<int> candidates;
-        for (int i = 0; i < (int)sourceItems.size(); ++i) {
-            std::string id = getIdentifier(sourceItems[i]);
+        for (int i = 0; i < (int)items.size(); ++i) {
+            std::string id = getIdentifier(items[i]);
             if (!id.empty() && std::find(history.begin(), history.end(), id) == history.end())
                 candidates.push_back(i);
         }
 
-        // If everything is in history, reset and pick from full list
+        // If all songs are in history, reset and pick from full list
         if (candidates.empty()) {
-            LogInfo(VB_GENERAL, "RandomSongPicker: all songs in history — resetting\n");
+            LogInfo(VB_GENERAL, "RandomSongPicker: all songs in history for '%s' — resetting\n",
+                    sourceName.c_str());
             history.clear();
-            for (int i = 0; i < (int)sourceItems.size(); ++i)
+            for (int i = 0; i < (int)items.size(); ++i)
                 candidates.push_back(i);
         }
 
         // 4. Random pick
         std::uniform_int_distribution<int> dist(0, (int)candidates.size() - 1);
         int picked = candidates[dist(m_rng)];
-        const Json::Value& item = sourceItems[picked];
+        const Json::Value& item = items[picked];
         std::string pickedId = getIdentifier(item);
 
         LogInfo(VB_GENERAL, "RandomSongPicker: picked '%s' from '%s'\n",
@@ -155,19 +147,17 @@ public:
         writeHistory(sourceName, history);
 
         // 6. Write output playlist
-        std::string writeErr = writeOutputPlaylist(outputName, item);
-        if (!writeErr.empty())
-            return writeErr;
+        err = writeOutputPlaylist(outputName, item);
+        if (!err.empty()) return err;
 
         // 7. Optionally start playback
         if (startPlayback) {
             std::string body = "{\"playlist\":\"" + outputName + "\",\"loop\":0}";
-            if (httpPost("http://127.0.0.1/api/v1/playlist/play", body)) {
-                LogInfo(VB_GENERAL, "RandomSongPicker: started playlist '%s'\n", outputName.c_str());
-            } else {
-                LogWarn(VB_GENERAL, "RandomSongPicker: failed to start playlist '%s'\n", outputName.c_str());
+            if (!httpPost("http://127.0.0.1/api/v1/playlist/play", body)) {
+                LogWarn(VB_GENERAL, "RandomSongPicker: failed to start '%s'\n", outputName.c_str());
                 return "Picked '" + pickedId + "' but failed to start playback";
             }
+            LogInfo(VB_GENERAL, "RandomSongPicker: started '%s'\n", outputName.c_str());
         }
 
         return "Picked: " + pickedId;
@@ -178,9 +168,6 @@ private:
     std::mt19937             m_rng{std::random_device{}()};
     std::vector<std::string> m_registeredCommands;
 
-    // -----------------------------------------------------------------------
-    // Return the sequence/media filename used as the history key
-    // -----------------------------------------------------------------------
     static std::string getIdentifier(const Json::Value& item) {
         if (item.isMember("sequenceName") && !item["sequenceName"].asString().empty())
             return item["sequenceName"].asString();
@@ -189,32 +176,21 @@ private:
         return {};
     }
 
-    // -----------------------------------------------------------------------
-    // Read source playlist — fills `items` with the mainPlaylist array.
-    // Returns empty string on success, error message on failure.
-    // -----------------------------------------------------------------------
     std::string readPlaylist(const std::string& name, Json::Value& items) {
         std::string path = PLAYLISTS_DIR + name + ".json";
         std::ifstream f(path);
-        if (!f.is_open())
-            return "Cannot open source playlist: " + path;
-
+        if (!f.is_open()) return "Cannot open source playlist: " + path;
         Json::Value root;
         Json::CharReaderBuilder builder;
         std::string errs;
         if (!Json::parseFromStream(builder, f, &root, &errs))
             return "Failed to parse '" + path + "': " + errs;
-
         if (!root.isMember("mainPlaylist") || !root["mainPlaylist"].isArray())
             return "'" + path + "' has no mainPlaylist array";
-
         items = root["mainPlaylist"];
         return {};
     }
 
-    // -----------------------------------------------------------------------
-    // History file: one identifier per line, stored per source playlist
-    // -----------------------------------------------------------------------
     std::string historyPath(const std::string& sourceName) {
         return HISTORY_DIR + "song_picker_" + sourceName + "_history.txt";
     }
@@ -236,16 +212,11 @@ private:
                     historyPath(sourceName).c_str());
             return;
         }
-        for (const auto& entry : history)
-            f << entry << "\n";
+        for (const auto& e : history) f << e << "\n";
     }
 
-    // -----------------------------------------------------------------------
-    // Write a single-item playlist JSON file
-    // -----------------------------------------------------------------------
     std::string writeOutputPlaylist(const std::string& name, const Json::Value& item) {
         std::string path = PLAYLISTS_DIR + name + ".json";
-
         double duration = item.isMember("duration") ? item["duration"].asDouble() : 0.0;
 
         Json::Value root;
@@ -264,20 +235,15 @@ private:
 
         Json::StreamWriterBuilder writer;
         writer["indentation"] = "  ";
-        std::string json = Json::writeString(writer, root);
 
         std::ofstream f(path, std::ios::trunc);
-        if (!f.is_open())
-            return "Cannot write output playlist: " + path;
-        f << json;
+        if (!f.is_open()) return "Cannot write output playlist: " + path;
+        f << Json::writeString(writer, root);
         return {};
     }
 
-    // -----------------------------------------------------------------------
-    // Command registration
-    // -----------------------------------------------------------------------
     void registerCommands() {
-        auto* cmd = new PickRandomSongCommand(this);
+        auto* cmd = new InsertRandomWithHistoryCommand(this);
         CommandManager::INSTANCE.addCommand(cmd);
         m_registeredCommands = {cmd->name};
         LogInfo(VB_PLUGIN, "RandomSongPicker: registered %zu commands\n",
@@ -292,54 +258,47 @@ private:
 };
 
 // ---------------------------------------------------------------------------
-// Command constructor
+// Command constructor — mirrors FPP's built-in playlist command arg style
 // ---------------------------------------------------------------------------
-PickRandomSongCommand::PickRandomSongCommand(RandomSongPickerPlugin* plugin)
-    : Command("Playlist - Pick Random Song",
-              "Pick a random, non-recently-played song from a source playlist "
-              "and write it to an output playlist. Optionally starts playback immediately."),
+InsertRandomWithHistoryCommand::InsertRandomWithHistoryCommand(RandomSongPickerPlugin* plugin)
+    : Command("Insert Random Item with History",
+              "Pick a random song from a source playlist, skipping recently played songs. "
+              "Writes the pick to an output playlist and optionally starts it. "
+              "History resets automatically once every song has been played."),
       m_plugin(plugin) {
-    args.emplace_back("Source Playlist", "datalist",
-                      "Playlist to pick a random song from (without .json)");
-    args.back().setContentListUrl("api/playlists");
-    args.emplace_back("Output Playlist", "datalist",
-                      "Single-song playlist to write (without .json). Type a new name to create one.",
-                      true);
-    args.back().setContentListUrl("api/playlists");
-    args.back().setDefaultValue("RandomPick");
-    args.emplace_back("History Size", "int",
-                      "How many recently played songs to exclude before repeating",
-                      true)
-        .setRange(1, 100)
-        .setDefaultValue("10");
-    args.emplace_back("Start Playback", "string",
-                      "Start the output playlist immediately after picking",
-                      true)
-        .setContentList({"Yes", "No"})
-        .setDefaultValue("Yes");
+    args.push_back(CommandArg("Source Playlist", "string", "Playlist to pick from")
+                       .setContentListUrl("api/playlists/playable"));
+    args.push_back(CommandArg("Output Playlist", "string", "Single-song playlist to write", true)
+                       .setContentListUrl("api/playlists/playable")
+                       .setDefaultValue("RandomPick"));
+    args.push_back(CommandArg("History Size", "int", "Songs to exclude before repeating", true)
+                       .setRange(1, 100)
+                       .setDefaultValue("10"));
+    args.push_back(CommandArg("Start Playback", "bool", "Start the output playlist immediately", true)
+                       .setDefaultValue("true"));
 }
 
 // ---------------------------------------------------------------------------
 // Command run()
 // ---------------------------------------------------------------------------
 std::unique_ptr<Command::Result>
-PickRandomSongCommand::run(const std::vector<std::string>& a) {
+InsertRandomWithHistoryCommand::run(const std::vector<std::string>& a) {
     if (a.empty() || a[0].empty())
         return std::make_unique<ErrorResult>("Source Playlist is required");
 
-    const std::string& source   = a[0];
-    std::string output          = (a.size() >= 2 && !a[1].empty()) ? a[1] : "RandomPick";
-    int historySize             = 10;
-    bool startPlayback          = true;
+    const std::string& source = a[0];
+    std::string output        = (a.size() >= 2 && !a[1].empty()) ? a[1] : "RandomPick";
+    int historySize           = 10;
+    bool startPlayback        = true;
 
     if (a.size() >= 3 && !a[2].empty()) {
         try { historySize = std::stoi(a[2]); } catch (...) {}
         if (historySize < 1) historySize = 1;
     }
     if (a.size() >= 4)
-        startPlayback = (a[3] != "No");
+        startPlayback = !(a[3] == "false" || a[3] == "0");
 
-    std::string result = m_plugin->pickRandomSong(source, output, historySize, startPlayback);
+    std::string result = m_plugin->pickWithHistory(source, output, historySize, startPlayback);
     return std::make_unique<Result>(result);
 }
 

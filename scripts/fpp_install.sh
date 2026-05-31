@@ -28,5 +28,12 @@ make FPP_SRC="${FPP_SRC}" clean
 make FPP_SRC="${FPP_SRC}" -j"$(nproc)"
 
 echo "fpp-RandomSongPicker: Install complete."
-echo "  Restart fppd for the new command to appear."
-echo "  Add 'Playlist - Pick Random Song' as a Command entry in your playlist."
+
+# Restart fppd so the new command is picked up immediately
+if systemctl is-active --quiet fppd 2>/dev/null; then
+    echo "fpp-RandomSongPicker: Restarting fppd..."
+    systemctl restart fppd
+    echo "fpp-RandomSongPicker: fppd restarted — 'Insert Random Item with History' command is now available."
+else
+    echo "fpp-RandomSongPicker: fppd is not running — start it to load the 'Insert Random Item with History' command."
+fi
