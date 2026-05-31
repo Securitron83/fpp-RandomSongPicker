@@ -24,22 +24,32 @@
             <h3 class="card-title"><i class="fas fa-dice"></i> Manual Pick</h3>
         </div>
         <div class="card-body">
+
             <div class="form-group row mb-2">
                 <label class="col-sm-3 col-form-label col-form-label-sm"><strong>Source Playlist</strong></label>
                 <div class="col-sm-9">
-                    <input type="text" id="sourceName" class="form-control form-control-sm"
-                           style="max-width:280px" placeholder="e.g. Christmas">
-                    <small class="text-muted">Name without .json</small>
+                    <select id="sourceName" class="form-control form-control-sm" style="max-width:280px">
+                        <option value="">— loading playlists… —</option>
+                    </select>
+                    <small class="text-muted">Playlist to pick a random song from</small>
                 </div>
             </div>
+
             <div class="form-group row mb-2">
                 <label class="col-sm-3 col-form-label col-form-label-sm"><strong>Output Playlist</strong></label>
                 <div class="col-sm-9">
-                    <input type="text" id="outputName" class="form-control form-control-sm"
-                           style="max-width:280px" value="RandomPick">
-                    <small class="text-muted">Name without .json</small>
+                    <select id="outputSelect" class="form-control form-control-sm" style="max-width:280px"
+                            onchange="toggleNewPlaylist()">
+                        <option value="">— loading playlists… —</option>
+                    </select>
+                    <div id="newPlaylistRow" style="display:none;margin-top:6px">
+                        <input type="text" id="newPlaylistName" class="form-control form-control-sm"
+                               style="max-width:280px" placeholder="New playlist name (without .json)">
+                    </div>
+                    <small class="text-muted">Single-song playlist that will be written and played</small>
                 </div>
             </div>
+
             <div class="form-group row mb-2">
                 <label class="col-sm-3 col-form-label col-form-label-sm"><strong>History Size</strong></label>
                 <div class="col-sm-9">
@@ -48,10 +58,11 @@
                     <small class="text-muted">Songs to exclude before repeating</small>
                 </div>
             </div>
+
             <div class="form-group row mb-2">
                 <label class="col-sm-3 col-form-label col-form-label-sm"><strong>Start Playback</strong></label>
-                <div class="col-sm-9 d-flex align-items-center">
-                    <div class="form-check form-check-inline mt-1">
+                <div class="col-sm-9 d-flex align-items-center mt-1">
+                    <div class="form-check form-check-inline">
                         <input class="form-check-input" type="radio" name="startPlayback" id="spYes" value="Yes" checked>
                         <label class="form-check-label" for="spYes">Yes</label>
                     </div>
@@ -61,14 +72,19 @@
                     </div>
                 </div>
             </div>
+
             <div class="form-group row">
                 <div class="col-sm-9 offset-sm-3">
                     <button class="btn btn-warning btn-sm" onclick="doPick()">
                         <i class="fas fa-dice"></i> Pick Now
                     </button>
+                    <button class="btn btn-outline-secondary btn-sm ml-2" onclick="loadPlaylists()">
+                        <i class="fas fa-sync-alt"></i> Refresh Lists
+                    </button>
                     <span id="pickStatus" class="ml-3 small"></span>
                 </div>
             </div>
+
         </div>
     </div>
 
@@ -118,6 +134,76 @@
 </div>
 
 <script>
+var playlistNames = [];
+
+function loadPlaylists() {
+    $('#sourceName').html('<option value="">— loading… —</option>');
+    $('#outputSelect').html('<option value="">— loading… —</option>');
+
+    fetch('/api/files/playlists')
+        .then(r => r.ok ? r.json() : Promise.reject(r.status))
+        .then(data => {
+            var files = (data.files || [])
+                .map(f => f.name || f)
+                .filter(n => n.endsWith('.json'))
+                .map(n => n.replace(/\.json$/i, ''))
+                .sort();
+
+            playlistNames = files;
+
+            // Source dropdown — all playlists
+            var srcHtml = '<option value="">— select source playlist —</option>';
+            files.forEach(function(n) {
+                srcHtml += '<option value="' + escHtml(n) + '">' + escHtml(n) + '</option>';
+            });
+            $('#sourceName').html(srcHtml);
+
+            // Output dropdown — all playlists + create new option
+            var outHtml = '';
+            files.forEach(function(n) {
+                // Pre-select RandomPick if it exists
+                var sel = (n === 'RandomPick') ? ' selected' : '';
+                outHtml += '<option value="' + escHtml(n) + '"' + sel + '>' + escHtml(n) + '</option>';
+            });
+            outHtml += '<option value="__new__">— Create new playlist… —</option>';
+            // If RandomPick doesn't exist, add it as default new option pre-filled
+            if (files.indexOf('RandomPick') === -1) {
+                outHtml = '<option value="__new__" selected>— Create new playlist… —</option>' + outHtml;
+                $('#newPlaylistName').val('RandomPick');
+                $('#newPlaylistRow').show();
+            }
+            $('#outputSelect').html(outHtml);
+            toggleNewPlaylist();
+        })
+        .catch(function() {
+            $('#sourceName').html('<option value="">— failed to load playlists —</option>');
+            $('#outputSelect').html('<option value="__new__">— Create new playlist… —</option>');
+            $('#newPlaylistRow').show();
+            setStatus(false, 'Could not load playlist list from FPP API');
+        });
+}
+
+function toggleNewPlaylist() {
+    if ($('#outputSelect').val() === '__new__') {
+        $('#newPlaylistRow').show();
+    } else {
+        $('#newPlaylistRow').hide();
+    }
+}
+
+function getOutputName() {
+    var sel = $('#outputSelect').val();
+    if (sel === '__new__') {
+        var n = $('#newPlaylistName').val().trim();
+        return n || '';
+    }
+    return sel || '';
+}
+
+function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 function apiCommand(cmd, args) {
     const parts = ['/api/command', encodeURIComponent(cmd)].concat(args.map(encodeURIComponent));
     return fetch(parts.join('/'), { method: 'GET' })
@@ -132,15 +218,25 @@ function setStatus(ok, msg) {
 }
 
 function doPick() {
-    const src  = $('#sourceName').val().trim();
-    const out  = $('#outputName').val().trim() || 'RandomPick';
-    const hist = $('#historySize').val() || '10';
-    const play = $('input[name="startPlayback"]:checked').val();
+    var src  = $('#sourceName').val();
+    var out  = getOutputName();
+    var hist = $('#historySize').val() || '10';
+    var play = $('input[name="startPlayback"]:checked').val();
 
-    if (!src) { setStatus(false, 'Enter a source playlist name'); return; }
+    if (!src) { setStatus(false, 'Select a source playlist'); return; }
+    if (!out) { setStatus(false, 'Enter a name for the new playlist'); return; }
+
     setStatus(true, 'Picking…');
     apiCommand('Playlist - Pick Random Song', [src, out, hist, play])
-        .then(r => setStatus(true, r.result || 'Done'))
-        .catch(() => setStatus(false, 'Failed — is the plugin loaded?'));
+        .then(function(r) {
+            setStatus(true, r.result || 'Done');
+            // Refresh list in case a new playlist was created
+            loadPlaylists();
+        })
+        .catch(function() { setStatus(false, 'Failed — is the plugin loaded?'); });
 }
+
+$(document).ready(function() {
+    loadPlaylists();
+});
 </script>
