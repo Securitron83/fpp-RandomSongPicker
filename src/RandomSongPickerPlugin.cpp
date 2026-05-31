@@ -300,13 +300,13 @@ PickRandomSongCommand::PickRandomSongCommand(RandomSongPickerPlugin* plugin)
               "and write it to an output playlist. Optionally starts playback immediately."),
       m_plugin(plugin) {
     args.emplace_back("Source Playlist", "datalist",
-                      "Playlist to pick a random song from (without .json)")
-        .setContentListUrl("api/playlists");
+                      "Playlist to pick a random song from (without .json)");
+    args.back().setContentListUrl("api/playlists");
     args.emplace_back("Output Playlist", "datalist",
                       "Single-song playlist to write (without .json). Type a new name to create one.",
-                      true)
-        .setContentListUrl("api/playlists")
-        .setDefaultValue("RandomPick");
+                      true);
+    args.back().setContentListUrl("api/playlists");
+    args.back().setDefaultValue("RandomPick");
     args.emplace_back("History Size", "int",
                       "How many recently played songs to exclude before repeating",
                       true)
