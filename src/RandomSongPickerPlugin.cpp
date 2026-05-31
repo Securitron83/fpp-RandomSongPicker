@@ -111,6 +111,26 @@ public:
     // Pick a random song and queue it as the next item in the calling playlist.
     std::string insertRandomWithHistory(const std::string& sourceName, int historySize) {
         std::lock_guard<std::mutex> lk(m_mutex);
+
+        // Guard against running in a repeat loop after the user hits Stop.
+        //
+        // StopGracefully propagates through child→parent (Playlist.cpp line 716), so
+        // by the time the command runs again the parent status is already non-PLAYING.
+        //
+        // StopNow does NOT propagate — it just calls SetIdle() on the child and restores
+        // playlist=parent with the parent still in PLAYLIST_PLAYING state. We detect this
+        // via Player::GetForceStopped() and call StopGracefully() ourselves so Lead Out
+        // still runs before the playlist exits.
+        PlaylistStatus ps = Player::INSTANCE.GetStatus();
+        if (ps != FPP_STATUS_PLAYLIST_PLAYING) {
+            LogInfo(VB_GENERAL, "RandomSongPicker: status %d — skipping insert\n", (int)ps);
+            return "Skipped: playback stopping";
+        }
+        if (Player::INSTANCE.GetForceStopped()) {
+            LogInfo(VB_GENERAL, "RandomSongPicker: force-stop detected — stopping gracefully\n");
+            Player::INSTANCE.StopGracefully();
+            return "Skipped: stop requested";
+        }
         Json::Value item;
         std::string pickedId;
         int absolutePos = 0;
