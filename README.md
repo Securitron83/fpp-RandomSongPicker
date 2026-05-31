@@ -1,6 +1,6 @@
 # fpp-RandomSongPicker
 
-An FPP plugin that picks a random, non-recently-played song from a source playlist. Unlike FPP's built-in random selection, this plugin tracks play history so the same song is not repeated until a configurable number of other songs have played.
+A FPP plugin that picks a random, non-recently-played song from a source playlist. Unlike FPP's built-in random selection, this plugin tracks play history so the same song is not repeated until a configurable number of other songs have played.
 
 ## Commands
 
