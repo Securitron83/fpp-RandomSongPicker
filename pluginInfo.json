@@ -1,0 +1,25 @@
+{
+    "name": "Random Song Picker",
+    "repoName": "fpp-RandomSongPicker",
+    "description": "Pick a random, non-recently-played song from a source playlist and write it to an output playlist. Add the command to any playlist to replace cron-based random selection.",
+    "author": "Securitron83",
+    "srcURL": "https://github.com/Securitron83/fpp-RandomSongPicker.git",
+    "homeURL": "https://github.com/Securitron83/fpp-RandomSongPicker",
+    "bugURL": "https://github.com/Securitron83/fpp-RandomSongPicker/issues",
+    "versions": [
+        {
+            "minFPPVersion": "9.0",
+            "maxFPPVersion": "0",
+            "branch": "master",
+            "sha": "",
+            "allowUpdates": 1
+        }
+    ],
+    "menuItems": [
+        {
+            "title": "Random Song Picker",
+            "page": "content.php",
+            "type": "content"
+        }
+    ]
+}
