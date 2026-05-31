@@ -11,24 +11,71 @@
         </div>
         <div class="card-body">
             <p class="text-muted small mb-0">
-                Pick a random, non-recently-played song from a source playlist and write it to
-                a single-song output playlist. Add the <strong>Playlist - Pick Random Song</strong>
-                command to any FPP playlist to replace cron-based random selection — no cron job needed.
+                Pick a random, non-recently-played song from a source playlist.
+                Two commands are available: one that plays the picked song immediately as the next
+                item in the calling playlist, and one that writes the pick to an output playlist
+                for a separate Playlist entry to play.
             </p>
         </div>
     </div>
 
-    <!-- Test / Manual Pick -->
+    <!-- Insert Random Item with History -->
     <div class="card card-outline card-warning mt-3">
         <div class="card-header">
-            <h3 class="card-title"><i class="fas fa-dice"></i> Manual Pick</h3>
+            <h3 class="card-title"><i class="fas fa-play-circle"></i> Insert Random Item with History</h3>
         </div>
         <div class="card-body">
+            <p class="text-muted small mb-3">
+                Picks a random song and immediately queues it as the next item in the calling playlist.
+                FPP plays it, then the calling playlist resumes — Lead Out still runs.
+            </p>
 
             <div class="form-group row mb-2">
                 <label class="col-sm-3 col-form-label col-form-label-sm"><strong>Source Playlist</strong></label>
                 <div class="col-sm-9">
-                    <select id="sourceName" class="form-control form-control-sm" style="max-width:280px">
+                    <select id="insertSourceName" class="form-control form-control-sm" style="max-width:280px">
+                        <option value="">— loading playlists… —</option>
+                    </select>
+                    <small class="text-muted">Playlist to pick a random song from</small>
+                </div>
+            </div>
+
+            <div class="form-group row mb-2">
+                <label class="col-sm-3 col-form-label col-form-label-sm"><strong>History Size</strong></label>
+                <div class="col-sm-9">
+                    <input type="number" id="insertHistorySize" class="form-control form-control-sm"
+                           style="max-width:100px" min="1" max="100" value="10">
+                    <small class="text-muted">Songs to exclude before repeating</small>
+                </div>
+            </div>
+
+            <div class="form-group row">
+                <div class="col-sm-9 offset-sm-3">
+                    <button class="btn btn-warning btn-sm" onclick="doInsert()">
+                        <i class="fas fa-play-circle"></i> Pick &amp; Play Now
+                    </button>
+                    <span id="insertStatus" class="ml-3 small"></span>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Write Random Item to Playlist -->
+    <div class="card card-outline card-info mt-3">
+        <div class="card-header">
+            <h3 class="card-title"><i class="fas fa-file-alt"></i> Write Random Item to Playlist</h3>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small mb-3">
+                Picks a random song and writes it to an output playlist. Does not start playback —
+                add a separate Playlist entry after this command to play the output playlist.
+            </p>
+
+            <div class="form-group row mb-2">
+                <label class="col-sm-3 col-form-label col-form-label-sm"><strong>Source Playlist</strong></label>
+                <div class="col-sm-9">
+                    <select id="writeSourceName" class="form-control form-control-sm" style="max-width:280px">
                         <option value="">— loading playlists… —</option>
                     </select>
                     <small class="text-muted">Playlist to pick a random song from</small>
@@ -38,7 +85,7 @@
             <div class="form-group row mb-2">
                 <label class="col-sm-3 col-form-label col-form-label-sm"><strong>Output Playlist</strong></label>
                 <div class="col-sm-9">
-                    <select id="outputSelect" class="form-control form-control-sm" style="max-width:280px"
+                    <select id="writeOutputSelect" class="form-control form-control-sm" style="max-width:280px"
                             onchange="toggleNewPlaylist()">
                         <option value="">— loading playlists… —</option>
                     </select>
@@ -46,30 +93,16 @@
                         <input type="text" id="newPlaylistName" class="form-control form-control-sm"
                                style="max-width:280px" placeholder="New playlist name (without .json)">
                     </div>
-                    <small class="text-muted">Single-song playlist that will be written and played</small>
+                    <small class="text-muted">Single-song playlist that will be written</small>
                 </div>
             </div>
 
             <div class="form-group row mb-2">
                 <label class="col-sm-3 col-form-label col-form-label-sm"><strong>History Size</strong></label>
                 <div class="col-sm-9">
-                    <input type="number" id="historySize" class="form-control form-control-sm"
+                    <input type="number" id="writeHistorySize" class="form-control form-control-sm"
                            style="max-width:100px" min="1" max="100" value="10">
                     <small class="text-muted">Songs to exclude before repeating</small>
-                </div>
-            </div>
-
-            <div class="form-group row mb-2">
-                <label class="col-sm-3 col-form-label col-form-label-sm"><strong>Start Playback</strong></label>
-                <div class="col-sm-9 d-flex align-items-center mt-1">
-                    <div class="form-check form-check-inline">
-                        <input class="form-check-input" type="radio" name="startPlayback" id="spYes" value="Yes" checked>
-                        <label class="form-check-label" for="spYes">Yes</label>
-                    </div>
-                    <div class="form-check form-check-inline">
-                        <input class="form-check-input" type="radio" name="startPlayback" id="spNo" value="No">
-                        <label class="form-check-label" for="spNo">No (just write playlist)</label>
-                    </div>
                 </div>
             </div>
 
@@ -79,7 +112,7 @@
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="replacePrevious" checked>
                         <label class="form-check-label" for="replacePrevious">
-                            Remove the previous item before inserting new one
+                            Replace the previous item instead of appending
                             <small class="text-muted d-block">Unchecked: append after the previous item</small>
                         </label>
                     </div>
@@ -88,13 +121,13 @@
 
             <div class="form-group row">
                 <div class="col-sm-9 offset-sm-3">
-                    <button class="btn btn-warning btn-sm" onclick="doPick()">
-                        <i class="fas fa-dice"></i> Pick Now
+                    <button class="btn btn-info btn-sm" onclick="doWrite()">
+                        <i class="fas fa-file-alt"></i> Write Now
                     </button>
                     <button class="btn btn-outline-secondary btn-sm ml-2" onclick="loadPlaylists()">
                         <i class="fas fa-sync-alt"></i> Refresh Lists
                     </button>
-                    <span id="pickStatus" class="ml-3 small"></span>
+                    <span id="writeStatus" class="ml-3 small"></span>
                 </div>
             </div>
 
@@ -112,22 +145,30 @@
             </div>
         </div>
         <div class="card-body">
-            <p class="mb-2">Two FPP commands are registered, available under <strong>Sequences &rarr; Command Presets</strong> and in any playlist Command entry:</p>
+            <p class="mb-2">Three FPP commands are registered, available under <strong>Sequences &rarr; Command Presets</strong> and in any playlist Command entry:</p>
             <table class="table table-sm table-bordered" style="max-width:780px">
                 <thead class="thead-light">
-                    <tr><th>Command</th><th>Arguments</th></tr>
+                    <tr><th>Command</th><th>Arguments</th><th>Use when…</th></tr>
                 </thead>
                 <tbody>
                     <tr>
                         <td><code>Insert Random Item with History</code></td>
                         <td>
                             <strong>Source Playlist</strong> — playlist to pick from (required)<br>
+                            <strong>History Size</strong> — songs to skip before repeating, default: <em>10</em>
+                        </td>
+                        <td>You want the command to pick <em>and</em> play immediately. Put this command in Lead In or Main; FPP plays the picked item, then resumes the calling playlist including Lead Out.</td>
+                    </tr>
+                    <tr>
+                        <td><code>Write Random Item to Playlist</code></td>
+                        <td>
+                            <strong>Source Playlist</strong> — playlist to pick from (required)<br>
                             <strong>Output Playlist</strong> — default: <em>RandomPick</em><br>
-                            <strong>History Size</strong> — songs to skip before repeating, default: <em>10</em><br>
-                            <strong>Start Playback</strong> — default: <em>true</em><br>
+                            <strong>History Size</strong> — default: <em>10</em><br>
                             <strong>Replace Previous</strong> — overwrite or append, default: <em>true</em><br>
                             <small class="text-muted">Lead In and Lead Out sections are always preserved.</small>
                         </td>
+                        <td>You want to write the pick to a playlist and play it with a separate Playlist entry. Useful when you need Lead In/Out on the output playlist itself.</td>
                     </tr>
                     <tr>
                         <td><code>Clear Playlist Main</code></td>
@@ -135,16 +176,15 @@
                             <strong>Playlist</strong> — playlist whose main section to clear (required)<br>
                             <small class="text-muted">Clears only the main items; Lead In and Lead Out are left intact.</small>
                         </td>
+                        <td>Reset an output playlist between shows.</td>
                     </tr>
                 </tbody>
             </table>
             <p class="text-muted small mb-1">
-                <strong>Typical setup:</strong> Create a scheduler playlist with three entries:
-                (1) a Command that checks WLED status, (2) a Command firing
-                <code>Insert Random Item with History</code> with Source = your song library playlist,
-                (3) a Playlist entry that plays <em>RandomPick</em>.
-                The plugin writes a new random song into <em>RandomPick.json</em> each time, skipping
-                recently played songs, while leaving any Lead In/Out items in <em>RandomPick</em> untouched.
+                <strong>Typical simple setup (Insert command):</strong> Scheduler playlist Lead In = WLED on,
+                Main = <code>Insert Random Item with History</code> (Source = your song library),
+                Lead Out = WLED off. The plugin picks a random, non-recently-played song and FPP plays it
+                inline before running Lead Out.
             </p>
             <p class="text-muted small mb-0">
                 History is stored per source playlist in
@@ -160,8 +200,9 @@
 var playlistNames = [];
 
 function loadPlaylists() {
-    $('#sourceName').html('<option value="">— loading… —</option>');
-    $('#outputSelect').html('<option value="">— loading… —</option>');
+    $('#insertSourceName').html('<option value="">— loading… —</option>');
+    $('#writeSourceName').html('<option value="">— loading… —</option>');
+    $('#writeOutputSelect').html('<option value="">— loading… —</option>');
 
     fetch('/api/files/playlists')
         .then(r => r.ok ? r.json() : Promise.reject(r.status))
@@ -174,40 +215,38 @@ function loadPlaylists() {
 
             playlistNames = files;
 
-            // Source dropdown — all playlists
             var srcHtml = '<option value="">— select source playlist —</option>';
             files.forEach(function(n) {
                 srcHtml += '<option value="' + escHtml(n) + '">' + escHtml(n) + '</option>';
             });
-            $('#sourceName').html(srcHtml);
+            $('#insertSourceName').html(srcHtml);
+            $('#writeSourceName').html(srcHtml);
 
-            // Output dropdown — all playlists + create new option
             var outHtml = '';
             files.forEach(function(n) {
-                // Pre-select RandomPick if it exists
                 var sel = (n === 'RandomPick') ? ' selected' : '';
                 outHtml += '<option value="' + escHtml(n) + '"' + sel + '>' + escHtml(n) + '</option>';
             });
             outHtml += '<option value="__new__">— Create new playlist… —</option>';
-            // If RandomPick doesn't exist, add it as default new option pre-filled
             if (files.indexOf('RandomPick') === -1) {
                 outHtml = '<option value="__new__" selected>— Create new playlist… —</option>' + outHtml;
                 $('#newPlaylistName').val('RandomPick');
                 $('#newPlaylistRow').show();
             }
-            $('#outputSelect').html(outHtml);
+            $('#writeOutputSelect').html(outHtml);
             toggleNewPlaylist();
         })
         .catch(function() {
-            $('#sourceName').html('<option value="">— failed to load playlists —</option>');
-            $('#outputSelect').html('<option value="__new__">— Create new playlist… —</option>');
+            $('#insertSourceName').html('<option value="">— failed to load playlists —</option>');
+            $('#writeSourceName').html('<option value="">— failed to load playlists —</option>');
+            $('#writeOutputSelect').html('<option value="__new__">— Create new playlist… —</option>');
             $('#newPlaylistRow').show();
-            setStatus(false, 'Could not load playlist list from FPP API');
+            setStatus('insertStatus', false, 'Could not load playlist list from FPP API');
         });
 }
 
 function toggleNewPlaylist() {
-    if ($('#outputSelect').val() === '__new__') {
+    if ($('#writeOutputSelect').val() === '__new__') {
         $('#newPlaylistRow').show();
     } else {
         $('#newPlaylistRow').hide();
@@ -215,10 +254,9 @@ function toggleNewPlaylist() {
 }
 
 function getOutputName() {
-    var sel = $('#outputSelect').val();
+    var sel = $('#writeOutputSelect').val();
     if (sel === '__new__') {
-        var n = $('#newPlaylistName').val().trim();
-        return n || '';
+        return $('#newPlaylistName').val().trim() || '';
     }
     return sel || '';
 }
@@ -233,31 +271,41 @@ function apiCommand(cmd, args) {
         .then(r => r.ok ? r.json() : Promise.reject(r.status));
 }
 
-function setStatus(ok, msg) {
-    $('#pickStatus').html(ok
+function setStatus(id, ok, msg) {
+    $('#' + id).html(ok
         ? '<span class="text-success"><i class="fas fa-check"></i> ' + msg + '</span>'
         : '<span class="text-danger"><i class="fas fa-times"></i> ' + msg + '</span>'
     );
 }
 
-function doPick() {
-    var src     = $('#sourceName').val();
+function doInsert() {
+    var src  = $('#insertSourceName').val();
+    var hist = $('#insertHistorySize').val() || '10';
+
+    if (!src) { setStatus('insertStatus', false, 'Select a source playlist'); return; }
+
+    setStatus('insertStatus', true, 'Picking…');
+    apiCommand('Insert Random Item with History', [src, hist])
+        .then(function(r) { setStatus('insertStatus', true, r.result || 'Done'); })
+        .catch(function() { setStatus('insertStatus', false, 'Failed — is the plugin loaded?'); });
+}
+
+function doWrite() {
+    var src     = $('#writeSourceName').val();
     var out     = getOutputName();
-    var hist    = $('#historySize').val() || '10';
-    var play    = $('input[name="startPlayback"]:checked').val();
+    var hist    = $('#writeHistorySize').val() || '10';
     var replace = $('#replacePrevious').is(':checked') ? 'true' : 'false';
 
-    if (!src) { setStatus(false, 'Select a source playlist'); return; }
-    if (!out) { setStatus(false, 'Enter a name for the new playlist'); return; }
+    if (!src) { setStatus('writeStatus', false, 'Select a source playlist'); return; }
+    if (!out) { setStatus('writeStatus', false, 'Enter a name for the output playlist'); return; }
 
-    setStatus(true, 'Picking…');
-    apiCommand('Insert Random Item with History', [src, out, hist, play, replace])
+    setStatus('writeStatus', true, 'Picking…');
+    apiCommand('Write Random Item to Playlist', [src, out, hist, replace])
         .then(function(r) {
-            setStatus(true, r.result || 'Done');
-            // Refresh list in case a new playlist was created
+            setStatus('writeStatus', true, r.result || 'Done');
             loadPlaylists();
         })
-        .catch(function() { setStatus(false, 'Failed — is the plugin loaded?'); });
+        .catch(function() { setStatus('writeStatus', false, 'Failed — is the plugin loaded?'); });
 }
 
 $(document).ready(function() {
